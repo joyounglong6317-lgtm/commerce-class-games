@@ -8,6 +8,7 @@
 <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
 <script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore-compat.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <style>
     body { font-family: 'Inter', sans-serif; background-color: #f8fafc; }
     .animate-fade-in { animation: fadeIn 0.5s ease-out; }
@@ -100,6 +101,18 @@
         </div>
 
         <div id="tabContent-questions" class="hidden animate-fade-in">
+            <div class="bg-white rounded-2xl shadow-md p-6 border border-slate-200 mb-6">
+                <h2 class="text-xl font-black mb-1 text-slate-800 flex items-center"><div class="w-8 h-8 rounded-lg bg-teal-100 text-teal-600 flex items-center justify-center mr-3"><i class="fas fa-file-excel"></i></div>엑셀 파일로 문제 일괄 업로드</h2>
+                <p class="text-sm text-slate-400 mb-4 ml-11">양식을 내려받아 문제를 채운 뒤, 그대로 업로드하면 한 번에 여러 문제가 등록됩니다. (객관식/OX, 단답형 모두 한 파일에 섞어서 작성 가능)</p>
+                <div class="flex flex-col sm:flex-row gap-3 items-start sm:items-center ml-11">
+                    <button type="button" onclick="downloadTemplate()" class="bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold py-2.5 px-5 rounded-xl text-sm transition-colors flex items-center gap-2"><i class="fas fa-download"></i> 엑셀 양식 다운로드</button>
+                    <label class="bg-teal-600 hover:bg-teal-700 text-white font-bold py-2.5 px-5 rounded-xl text-sm transition-colors flex items-center gap-2 cursor-pointer">
+                        <i class="fas fa-upload"></i> 엑셀 파일 업로드
+                        <input type="file" id="excelFileInput" accept=".xlsx,.xls" class="hidden">
+                    </label>
+                </div>
+                <div id="excelUploadResult" class="ml-11 mt-3"></div>
+            </div>
             <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
                 <div class="bg-white rounded-2xl shadow-md p-6 lg:col-span-1 h-fit border border-slate-200">
                     <h2 class="text-xl font-black mb-4 border-b border-slate-100 pb-3 text-slate-800 flex items-center"><div class="w-8 h-8 rounded-lg bg-blue-100 text-blue-600 flex items-center justify-center mr-3"><i class="fas fa-plus"></i></div>새 문제 등록</h2>
@@ -454,6 +467,108 @@ async function loadAdminScores() {
     html += '</tbody></table>';
     box.innerHTML = html;
 }
+
+// ---------------------------------------------------------------------
+// 관리자 - 엑셀 파일로 문제 일괄 업로드
+// ---------------------------------------------------------------------
+const EXCEL_HEADERS = ['유형(mcq또는short)', '카테고리', '문제', '보기1', '보기2', '보기3', '보기4', '정답(객관식)', '정답키워드(단답형,쉼표구분)', '해설'];
+
+function downloadTemplate() {
+    const example1 = ['mcq', '2026년 기출', '(예시) 기업 내 생산, 물류, 재무, 회계, 영업 프로세스를 통합 관리하는 시스템은?', 'ERP', 'SCM', 'CRM', 'ULS', 'ERP', '', 'ERP는 전사적 자원 관리 시스템입니다. (예시 행은 지우고 사용하세요)'];
+    const example2 = ['short', '2026년 기출', '(예시) 통화량을 늘려도 경기가 살아나지 않는 상태를 가리키는 용어는?', '', '', '', '', '', '유동성함정, 유동성 함정', '케인즈가 제시한 개념입니다. (예시 행은 지우고 사용하세요)'];
+    const ws = XLSX.utils.aoa_to_sheet([EXCEL_HEADERS, example1, example2]);
+    ws['!cols'] = [{wch:14},{wch:16},{wch:45},{wch:14},{wch:14},{wch:14},{wch:14},{wch:14},{wch:24},{wch:40}];
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, '문제업로드양식');
+    XLSX.writeFile(wb, '경제골든벨_문제업로드_양식.xlsx');
+}
+
+document.getElementById('excelFileInput').addEventListener('change', async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    const resultBox = document.getElementById('excelUploadResult');
+    resultBox.innerHTML = '<p class="text-slate-400 text-sm"><i class="fas fa-spinner fa-spin mr-1"></i>파일을 읽는 중...</p>';
+
+    try {
+        const buf = await file.arrayBuffer();
+        const wb = XLSX.read(buf, { type: 'array' });
+        const sheet = wb.Sheets[wb.SheetNames[0]];
+        const rows = XLSX.utils.sheet_to_json(sheet, { defval: '' });
+
+        if (rows.length === 0) {
+            resultBox.innerHTML = '<p class="text-rose-500 text-sm font-bold">시트에 데이터가 없습니다.</p>';
+            e.target.value = '';
+            return;
+        }
+
+        const valid = [];
+        const errors = [];
+        rows.forEach((row, idx) => {
+            const rowNum = idx + 2;
+            const type = String(row['유형(mcq또는short)'] ?? '').trim().toLowerCase();
+            const category = String(row['카테고리'] ?? '').trim();
+            const question = String(row['문제'] ?? '').trim();
+            const explanation = String(row['해설'] ?? '').trim();
+
+            if (!type && !category && !question) return; // 완전 빈 행은 무시
+
+            if (!['mcq', 'short'].includes(type)) {
+                errors.push(`${rowNum}행: 유형은 mcq 또는 short 로 입력해야 합니다.`);
+                return;
+            }
+            if (!category || !question) {
+                errors.push(`${rowNum}행: 카테고리/문제가 비어 있습니다.`);
+                return;
+            }
+
+            if (type === 'mcq') {
+                const options = ['보기1', '보기2', '보기3', '보기4'].map(k => String(row[k] ?? '').trim()).filter(Boolean);
+                const answer = String(row['정답(객관식)'] ?? '').trim();
+                if (options.length < 2) {
+                    errors.push(`${rowNum}행: 객관식은 보기가 2개 이상 필요합니다.`);
+                    return;
+                }
+                if (!options.includes(answer)) {
+                    errors.push(`${rowNum}행: 정답("${answer}")이 보기 중에 없습니다.`);
+                    return;
+                }
+                valid.push({ type: 'mcq', category, question, options, answer, explanation });
+            } else {
+                const accepted = String(row['정답키워드(단답형,쉼표구분)'] ?? '').split(',').map(s => s.trim()).filter(Boolean);
+                if (accepted.length === 0) {
+                    errors.push(`${rowNum}행: 단답형은 정답키워드가 필요합니다.`);
+                    return;
+                }
+                valid.push({ type: 'short', category, question, acceptedAnswers: accepted, explanation });
+            }
+        });
+
+        if (valid.length === 0) {
+            resultBox.innerHTML = `<p class="text-rose-500 text-sm font-bold">업로드할 수 있는 문제가 없습니다.</p><div class="text-xs text-slate-400 mt-2 max-h-32 overflow-y-auto">${errors.join('<br>')}</div>`;
+            e.target.value = '';
+            return;
+        }
+
+        let uploaded = 0;
+        for (let i = 0; i < valid.length; i += 400) {
+            const batch = db.batch();
+            const chunk = valid.slice(i, i + 400);
+            chunk.forEach(q => batch.set(db.collection(COL_CUSTOM_Q).doc(), q));
+            await batch.commit();
+            uploaded += chunk.length;
+        }
+
+        resultBox.innerHTML = `<p class="text-emerald-600 text-sm font-bold"><i class="fas fa-check-circle mr-1"></i>${uploaded}개 문제를 업로드했습니다.${errors.length ? ` (${errors.length}개 행 건너뜀)` : ''}</p>` +
+            (errors.length ? `<div class="text-xs text-slate-400 mt-2 max-h-32 overflow-y-auto">${errors.join('<br>')}</div>` : '');
+        showToast(`${uploaded}개 문제가 업로드되었습니다.`);
+        e.target.value = '';
+        loadAdminQuestions();
+    } catch (err) {
+        console.error(err);
+        resultBox.innerHTML = '<p class="text-rose-500 text-sm font-bold">파일을 읽는 중 오류가 발생했습니다. 다운로드한 양식과 같은 형식인지 확인해주세요.</p>';
+        e.target.value = '';
+    }
+});
 
 function toggleQTypeFields() {
     const type = document.getElementById('q_type').value;

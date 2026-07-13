@@ -8,6 +8,7 @@
 <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
 <script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore-compat.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <style>
     body { font-family: 'Inter', sans-serif; background-color: #f8fafc; }
     .animate-fade-in { animation: fadeIn 0.5s ease-out; }
@@ -104,6 +105,18 @@
         </div>
 
         <div id="tabContent-questions" class="hidden animate-fade-in">
+            <div class="bg-white rounded-2xl shadow-md p-6 border border-slate-200 mb-6">
+                <h2 class="text-xl font-black mb-1 text-slate-800 flex items-center"><div class="w-8 h-8 rounded-lg bg-teal-100 text-teal-600 flex items-center justify-center mr-3"><i class="fas fa-file-excel"></i></div>엑셀 파일로 문제 일괄 업로드</h2>
+                <p class="text-sm text-slate-400 mb-4 ml-11">양식을 내려받아 문제를 채운 뒤, 그대로 업로드하면 한 번에 여러 문제가 등록됩니다.</p>
+                <div class="flex flex-col sm:flex-row gap-3 items-start sm:items-center ml-11">
+                    <button type="button" onclick="downloadTemplate()" class="bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold py-2.5 px-5 rounded-xl text-sm transition-colors flex items-center gap-2"><i class="fas fa-download"></i> 엑셀 양식 다운로드</button>
+                    <label class="bg-teal-600 hover:bg-teal-700 text-white font-bold py-2.5 px-5 rounded-xl text-sm transition-colors flex items-center gap-2 cursor-pointer">
+                        <i class="fas fa-upload"></i> 엑셀 파일 업로드
+                        <input type="file" id="excelFileInput" accept=".xlsx,.xls" class="hidden">
+                    </label>
+                </div>
+                <div id="excelUploadResult" class="ml-11 mt-3"></div>
+            </div>
             <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
                 <div class="bg-white rounded-2xl shadow-md p-6 lg:col-span-1 h-fit border border-slate-200">
                     <h2 class="text-xl font-black mb-4 border-b border-slate-100 pb-3 text-slate-800 flex items-center"><div class="w-8 h-8 rounded-lg bg-blue-100 text-blue-600 flex items-center justify-center mr-3"><i class="fas fa-plus"></i></div>새 문제 등록</h2>
@@ -530,6 +543,89 @@ function escapeHtml(str) {
     if (str === undefined || str === null) return '';
     return String(str).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 }
+
+// ---------------------------------------------------------------------
+// 관리자 - 엑셀 파일로 문제 일괄 업로드
+// ---------------------------------------------------------------------
+const EXCEL_HEADERS = ['연도', '카테고리', '문제', '보기1', '보기2', '보기3', '보기4', '정답', '해설'];
+
+function downloadTemplate() {
+    const example = ['2026', '무역 서식', '(예시) 매도인이 매수인에게 대금을 청구하는 핵심 서류인 상업송장의 영문 약어는?', 'C/I', 'P/L', 'B/L', 'C/O', 'C/I', '상업송장은 Commercial Invoice, 즉 C/I 입니다. (예시 행은 지우고 사용하세요)'];
+    const ws = XLSX.utils.aoa_to_sheet([EXCEL_HEADERS, example]);
+    ws['!cols'] = [{wch:8},{wch:16},{wch:45},{wch:16},{wch:16},{wch:16},{wch:16},{wch:16},{wch:40}];
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, '문제업로드양식');
+    XLSX.writeFile(wb, '비즈니스영어_문제업로드_양식.xlsx');
+}
+
+document.getElementById('excelFileInput').addEventListener('change', async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    const resultBox = document.getElementById('excelUploadResult');
+    resultBox.innerHTML = '<p class="text-slate-400 text-sm"><i class="fas fa-spinner fa-spin mr-1"></i>파일을 읽는 중...</p>';
+
+    try {
+        const buf = await file.arrayBuffer();
+        const wb = XLSX.read(buf, { type: 'array' });
+        const sheet = wb.Sheets[wb.SheetNames[0]];
+        const rows = XLSX.utils.sheet_to_json(sheet, { defval: '' });
+
+        if (rows.length === 0) {
+            resultBox.innerHTML = '<p class="text-rose-500 text-sm font-bold">시트에 데이터가 없습니다.</p>';
+            e.target.value = '';
+            return;
+        }
+
+        const valid = [];
+        const errors = [];
+        rows.forEach((row, idx) => {
+            const rowNum = idx + 2; // 1행은 헤더
+            const year = String(row['연도'] ?? '').trim();
+            const category = String(row['카테고리'] ?? '').trim();
+            const question = String(row['문제'] ?? '').trim();
+            const options = ['보기1', '보기2', '보기3', '보기4'].map(k => String(row[k] ?? '').trim());
+            const answer = String(row['정답'] ?? '').trim();
+            const explanation = String(row['해설'] ?? '').trim();
+
+            if (!year && !category && !question && options.every(o => !o)) return; // 완전 빈 행은 조용히 무시
+
+            if (!year || !category || !question || options.some(o => !o) || !answer) {
+                errors.push(`${rowNum}행: 연도/카테고리/문제/보기1~4/정답 중 빠진 항목이 있습니다.`);
+                return;
+            }
+            if (!options.includes(answer)) {
+                errors.push(`${rowNum}행: 정답("${answer}")이 보기1~4 중에 없습니다.`);
+                return;
+            }
+            valid.push({ year, category, question, options, answer, explanation });
+        });
+
+        if (valid.length === 0) {
+            resultBox.innerHTML = `<p class="text-rose-500 text-sm font-bold">업로드할 수 있는 문제가 없습니다.</p><div class="text-xs text-slate-400 mt-2 max-h-32 overflow-y-auto">${errors.join('<br>')}</div>`;
+            e.target.value = '';
+            return;
+        }
+
+        let uploaded = 0;
+        for (let i = 0; i < valid.length; i += 400) {
+            const batch = db.batch();
+            const chunk = valid.slice(i, i + 400);
+            chunk.forEach(q => batch.set(db.collection(COL_CUSTOM_Q).doc(), q));
+            await batch.commit();
+            uploaded += chunk.length;
+        }
+
+        resultBox.innerHTML = `<p class="text-emerald-600 text-sm font-bold"><i class="fas fa-check-circle mr-1"></i>${uploaded}개 문제를 업로드했습니다.${errors.length ? ` (${errors.length}개 행 건너뜀)` : ''}</p>` +
+            (errors.length ? `<div class="text-xs text-slate-400 mt-2 max-h-32 overflow-y-auto">${errors.join('<br>')}</div>` : '');
+        showToast(`${uploaded}개 문제가 업로드되었습니다.`);
+        e.target.value = '';
+        loadAdminQuestions();
+    } catch (err) {
+        console.error(err);
+        resultBox.innerHTML = '<p class="text-rose-500 text-sm font-bold">파일을 읽는 중 오류가 발생했습니다. 다운로드한 양식과 같은 형식인지 확인해주세요.</p>';
+        e.target.value = '';
+    }
+});
 
 // ---------------------------------------------------------------------
 // 학생 - 퀴즈 시작 화면
