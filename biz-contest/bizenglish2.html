@@ -231,7 +231,15 @@ function docxDataUrl(base64) {
    Firebase 설정 - 본인의 Firebase 프로젝트 값으로 반드시 교체하세요!
    Firebase 콘솔 > 프로젝트 설정 > 일반 > 내 앱 에서 확인할 수 있습니다.
 ===================================================================== */
-const firebaseConfig = {};
+const firebaseConfig = {
+  apiKey: "AIzaSyB89aIdr4qh_oW2y2OpQu6krdTy88C72OM",
+  authDomain: "bizenglish2.firebaseapp.com",
+  projectId: "bizenglish2",
+  storageBucket: "bizenglish2.firebasestorage.app",
+  messagingSenderId: "221706026737",
+  appId: "1:221706026737:web:0c7202e2825bb66ab2f350",
+  measurementId: "G-08B4CB049D"
+};
 
 // Firestore 컬렉션 이름 (다른 앱과 겹치지 않도록 이 접두어를 사용합니다)
 const COL_USERS = 'speaking2_users';
