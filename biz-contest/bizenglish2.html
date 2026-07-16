@@ -232,14 +232,13 @@ function docxDataUrl(base64) {
    Firebase 콘솔 > 프로젝트 설정 > 일반 > 내 앱 에서 확인할 수 있습니다.
 ===================================================================== */
 const firebaseConfig = {
-    apiKey: "AIzaSyB89aIdr4qh_oW2y2OpQu6krdTy88C72OM",
+  apiKey: "AIzaSyB89aIdr4qh_oW2y2OpQu6krdTy88C72OM",
   authDomain: "bizenglish2.firebaseapp.com",
   projectId: "bizenglish2",
   storageBucket: "bizenglish2.firebasestorage.app",
   messagingSenderId: "221706026737",
   appId: "1:221706026737:web:0c7202e2825bb66ab2f350",
   measurementId: "G-08B4CB049D"
-
 };
 
 // Firestore 컬렉션 이름 (다른 앱과 겹치지 않도록 이 접두어를 사용합니다)
@@ -618,7 +617,7 @@ function interviewView(){
   micRow.style.alignItems="center"; micRow.style.gap="16px";
   const mic = el("button","mic-btn","🎙");
   mic.title = "눌러서 말하기 (Chrome 음성인식)";
-  const hint = el("div",null,"<div style='font-size:13px;color:var(--ink-soft);'>버튼을 누르고 영어로 답변해 보세요.<br>인식이 안 되면 아래 칸에 직접 입력하세요.</div>");
+  const hint = el("div",null,"<div style='font-size:13px;color:var(--ink-soft);'>버튼을 누르고 <b>영어 문장을 끝까지</b> 말한 뒤, 마이크를 <b>다시 눌러 멈춰주세요</b>.<br>인식이 부정확하면 또박또박 천천히 말하거나 아래 칸에 직접 입력하세요.</div>");
   micRow.appendChild(mic);
   micRow.appendChild(hint);
   inner.appendChild(micRow);
@@ -632,6 +631,15 @@ function interviewView(){
   ta.oninput = ()=>{ state.answers[state.qIdx] = ta.value; };
   inner.appendChild(el("div",null,"<div style='height:10px;'></div>"));
   inner.appendChild(ta);
+
+  const clearRow = el("div","row"); clearRow.style.marginTop="6px";
+  const clearBtn = el("button","link-btn muted","지우고 다시 녹음");
+  clearBtn.onclick = ()=>{
+    if(state.recognizing && recognition){ try{ recognition.stop(); }catch(e){} }
+    ta.value = ""; state.answers[state.qIdx] = ""; setMicStatus("", null);
+  };
+  clearRow.appendChild(clearBtn);
+  inner.appendChild(clearRow);
 
   function setMicStatus(text, kind){
     micStatus.textContent = text || "";
@@ -648,18 +656,36 @@ function interviewView(){
     setMicStatus("⚠ 이 페이지가 https:// 로 열려있지 않아 음성 인식을 사용할 수 없어요. GitHub Pages 등 https 주소에서 열어주세요. (직접 입력은 계속 가능합니다)", "error");
   }else if(SpeechRec){
     mic.onclick = ()=>{
-      if(state.recognizing){ recognition && recognition.stop(); return; }
+      if(state.recognizing){
+        try{ recognition && recognition.stop(); }catch(e){}
+        return;
+      }
       try{
         recognition = new SpeechRec();
-        recognition.lang = "en-US"; recognition.interimResults=false; recognition.maxAlternatives=1;
-        recognition.onstart = ()=>{ state.recognizing=true; mic.classList.add("listening"); setMicStatus("🎙 듣고 있어요... 영어로 또박또박 말씀해주세요.", "ok"); };
-        recognition.onend = ()=>{ state.recognizing=false; mic.classList.remove("listening"); };
+        recognition.lang = "en-US";
+        recognition.continuous = true;
+        recognition.interimResults = true;
+        recognition.maxAlternatives = 1;
+        let baseText = ta.value.trim() ? ta.value.trim() + " " : "";
+
+        recognition.onstart = ()=>{
+          state.recognizing = true;
+          mic.classList.add("listening");
+          setMicStatus("🎙 듣고 있어요 — 문장을 끝까지 말한 뒤 마이크를 다시 눌러 멈추세요.", "ok");
+        };
+        recognition.onend = ()=>{
+          state.recognizing = false;
+          mic.classList.remove("listening");
+          state.answers[state.qIdx] = ta.value;
+          if(ta.value.trim()) setMicStatus("✓ 녹음을 멈췄어요. 내용을 확인하고 필요하면 직접 수정하세요.", "ok");
+        };
         recognition.onerror = (ev)=>{
-          state.recognizing=false; mic.classList.remove("listening");
+          state.recognizing = false;
+          mic.classList.remove("listening");
           const reasons = {
             "not-allowed": "마이크 권한이 차단되어 있어요. 주소창 왼쪽의 자물쇠(또는 카메라/마이크) 아이콘을 눌러 마이크 권한을 '허용'으로 바꾼 뒤 다시 눌러주세요.",
             "service-not-allowed": "마이크 권한이 차단되어 있어요. 브라우저 설정에서 이 사이트의 마이크 접근을 허용해주세요.",
-            "no-speech": "음성이 감지되지 않았어요. 마이크에 더 가까이서 다시 눌러 말씀해주세요.",
+            "no-speech": "음성이 감지되지 않았어요. 마이크에 더 가까이서, 조금 더 크게 다시 말씀해주세요.",
             "audio-capture": "마이크를 찾을 수 없어요. 마이크가 연결되어 있는지 확인해주세요.",
             "network": "네트워크 오류로 음성 인식에 실패했어요. 인터넷 연결을 확인하고 다시 시도해주세요.",
             "aborted": "음성 인식이 중단되었어요. 다시 눌러 시도해주세요."
@@ -667,10 +693,23 @@ function interviewView(){
           setMicStatus("⚠ " + (reasons[ev.error] || ("음성 인식 오류(" + ev.error + "). 아래 칸에 직접 입력해주세요.")), "error");
         };
         recognition.onresult = (ev)=>{
-          const text = ev.results[0][0].transcript;
-          ta.value = (ta.value ? ta.value+" " : "") + text;
+          let finalChunk = "";
+          let interimChunk = "";
+          for(let i = ev.resultIndex; i < ev.results.length; i++){
+            const transcript = ev.results[i][0].transcript;
+            if(ev.results[i].isFinal) finalChunk += transcript;
+            else interimChunk += transcript;
+          }
+          if(finalChunk){
+            baseText = (baseText + finalChunk).trim() + " ";
+          }
+          ta.value = (baseText + interimChunk).trim();
           state.answers[state.qIdx] = ta.value;
-          setMicStatus("✓ 인식 완료: \"" + text + "\"", "ok");
+          if(interimChunk){
+            setMicStatus("🎙 인식 중: \"" + interimChunk + "\"", "ok");
+          }else if(finalChunk){
+            setMicStatus("✓ 인식됨: \"" + finalChunk.trim() + "\" — 계속 말하거나 마이크를 눌러 멈추세요.", "ok");
+          }
         };
         recognition.start();
       }catch(err){
