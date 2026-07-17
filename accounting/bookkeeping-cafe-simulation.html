@@ -502,9 +502,14 @@ function finishGame(){
     : `자산(${fmt(assetTotal)}) ≠ 부채+자본(${fmt(liabTotal+equity)})`;
 
   document.getElementById('endCard').classList.remove('hidden');
+
+  if(window.ClassHub){
+    window.ClassHub.logScore('부기 마스터 카페 시뮬레이션', `등급 ${grade} (${gradeName})`, null, null, score);
+  }
 }
 
 renderRound();
 </script>
+<script type="module" src="../shared/class-common.js" data-role="activity" data-hub="hub.html"></script>
 </body>
 </html>

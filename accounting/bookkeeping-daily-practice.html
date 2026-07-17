@@ -415,9 +415,13 @@ function finishDay(){
   document.getElementById('summaryPct').textContent = pct+"%";
   document.getElementById('summaryDesc').textContent = desc;
   document.getElementById('summaryDetail').textContent = `Day ${curDay.id} · ${correctCount} / ${total}문항 정답 · 획득 점수 ${score}점`;
+  if(window.ClassHub){
+    window.ClassHub.logScore('데일리 분개 트레이닝', `Day ${curDay.id}`, correctCount, total, score);
+  }
 }
 
 renderHome();
 </script>
+<script type="module" src="../shared/class-common.js" data-role="activity" data-hub="hub.html"></script>
 </body>
 </html>

@@ -156,6 +156,9 @@ function showWin(){
   document.getElementById('winMoves').textContent = moves;
   document.getElementById('winTime').textContent = fmtTime(seconds);
   document.getElementById('winOverlay').classList.add('show');
+  if(window.ClassHub){
+    window.ClassHub.logScore('짝맞추기 게임', `시도 ${moves}회 · ${fmtTime(seconds)}`, PAIRS.length, PAIRS.length, moves);
+  }
 }
 
 document.getElementById('restartBtn').addEventListener('click', buildBoard);
@@ -163,5 +166,6 @@ document.getElementById('playAgainBtn').addEventListener('click', buildBoard);
 
 buildBoard();
 </script>
+<script type="module" src="../shared/class-common.js" data-role="activity" data-hub="hub.html"></script>
 </body>
 </html>

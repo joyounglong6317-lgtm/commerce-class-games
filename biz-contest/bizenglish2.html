@@ -232,7 +232,7 @@ function docxDataUrl(base64) {
    Firebase 콘솔 > 프로젝트 설정 > 일반 > 내 앱 에서 확인할 수 있습니다.
 ===================================================================== */
 const firebaseConfig = {
-apiKey: "AIzaSyB89aIdr4qh_oW2y2OpQu6krdTy88C72OM",
+  apiKey: "AIzaSyB89aIdr4qh_oW2y2OpQu6krdTy88C72OM",
   authDomain: "bizenglish2.firebaseapp.com",
   projectId: "bizenglish2",
   storageBucket: "bizenglish2.firebasestorage.app",
@@ -505,6 +505,7 @@ function homeView(){
 }
 
 function startSet(idx){
+  if(window.speechSynthesis) window.speechSynthesis.cancel();
   state.setIdx = idx; state.qIdx=0; state.answers=[]; state.scores=[];
   state.readTimeLeft = 300;
   state.view = "reading";
@@ -530,6 +531,7 @@ function goHome(){
   clearInterval(state.readTimerId);
   clearInterval(state.qTimerId);
   if(state.recognizing && recognition){ try{ recognition.stop(); }catch(e){} }
+  if(window.speechSynthesis) window.speechSynthesis.cancel();
   state.view = "home";
   render();
 }
@@ -543,6 +545,30 @@ function readingView(){
   const rTagText = set.reconstructed ? `지문원문·문항자체제작 · ${set.examLabel}` : (set.isExam ? `기출 · ${set.examLabel}` : set.type);
   inner.appendChild(el("span","tag"+rTagClass, rTagText));
   inner.appendChild(el("h2","doc-title", set.title));
+
+  const listenRow = el("div","row"); listenRow.style.margin="2px 0 14px";
+  const listenBtn = el("button","btn secondary","🔊 지문 전체 듣기 (영어 음성)");
+  const fullText = [...set.meta, ...set.body].join(". ");
+  listenBtn.onclick = ()=>{
+    if(!window.speechSynthesis){
+      alert("이 브라우저는 음성 읽기를 지원하지 않아요.");
+      return;
+    }
+    if(window.speechSynthesis.speaking){
+      window.speechSynthesis.cancel();
+      listenBtn.textContent = "🔊 지문 전체 듣기 (영어 음성)";
+      return;
+    }
+    const u = new SpeechSynthesisUtterance(fullText);
+    u.lang = "en-US"; u.rate = 0.92;
+    u.onend = ()=>{ listenBtn.textContent = "🔊 지문 전체 듣기 (영어 음성)"; };
+    u.onerror = ()=>{ listenBtn.textContent = "🔊 지문 전체 듣기 (영어 음성)"; };
+    window.speechSynthesis.cancel();
+    window.speechSynthesis.speak(u);
+    listenBtn.textContent = "⏹ 읽기 정지";
+  };
+  listenRow.appendChild(listenBtn);
+  inner.appendChild(listenRow);
 
   const docBox = el("div","doc-text");
   set.meta.forEach(m=> docBox.appendChild(el("div","meta-line", m)));
@@ -579,6 +605,7 @@ function readingView(){
 }
 
 function goInterview(){
+  if(window.speechSynthesis) window.speechSynthesis.cancel();
   state.qIdx = 0; state.view="interview"; state.qTimeLeft=60;
   render();
   runQTimer();
