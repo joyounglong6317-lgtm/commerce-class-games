@@ -675,7 +675,22 @@
 
         window.showModal = function(title, message, isConfirm = false, onConfirm = null) {
             const modal = document.getElementById('customModal'); const content = document.getElementById('customModalContent'); const btnContainer = document.getElementById('modalButtons'); const iconEl = document.getElementById('modalIcon');
-            document.getElementById('modalTitle').innerText = title; document.getElementById('modalMessage').innerHTML = message; btnContainer.innerHTML = '';
+            const titleEl = document.getElementById('modalTitle'); const msgEl = document.getElementById('modalMessage');
+
+            // 안전장치: 배포/캐시 문제 등으로 모달 요소 자체가 페이지에 없을 경우
+            // 화면이 멈추지 않도록 기본 alert()/confirm()으로 자동 전환합니다.
+            if (!modal || !content || !btnContainer || !iconEl || !titleEl || !msgEl) {
+                console.warn('커스텀 모달 요소를 찾을 수 없어 기본 alert로 대체합니다. (배포된 파일이 최신본인지 확인해주세요)');
+                const plainMsg = String(message).replace(/<br\s*\/?>/gi, '\n').replace(/<[^>]+>/g, '');
+                if (isConfirm) {
+                    if (window.confirm(`${title}\n\n${plainMsg}`) && onConfirm) onConfirm();
+                } else {
+                    window.alert(`${title}\n\n${plainMsg}`);
+                }
+                return;
+            }
+
+            titleEl.innerText = title; msgEl.innerHTML = message; btnContainer.innerHTML = '';
 
             if(isConfirm) {
                 iconEl.className = "w-16 h-16 mx-auto bg-amber-100 text-amber-600 rounded-full flex items-center justify-center text-3xl mb-4";
@@ -780,8 +795,15 @@
                     btn.innerHTML = '<i class="fa-solid fa-stop mr-2"></i> 측정 정지';
                     btn.classList.replace('bg-indigo-600', 'bg-rose-500');
                     noiseInterval = setInterval(() => { let level = mic.getLevel(); updateNoiseUI(Math.min(Math.floor(level * 500), 100)); }, 100);
-                }, (err) => { window.customAlert("브라우저에서 마이크 접근 권한을 거부했거나 연결된 마이크가 없습니다."); });
-            } catch (e) { window.customAlert("마이크를 실행할 수 없습니다. HTTPS 환경인지 확인하세요."); }
+                }, (err) => { window.customAlert("브라우저에서 마이크 접근 권한을 거부했거나 연결된 마이크가 없습니다.<br><br>주소창 왼쪽 자물쇠 아이콘을 눌러 마이크 권한을 '허용'으로 바꿔주세요."); });
+            } catch (e) {
+                console.error('마이크 실행 오류:', e);
+                if (typeof p5 === 'undefined' || typeof p5.AudioIn === 'undefined') {
+                    window.customAlert("소리 측정 라이브러리(p5.sound)를 불러오지 못했습니다.<br>네트워크 상태나 광고 차단 확장 프로그램을 확인 후 새로고침 해주세요.");
+                } else {
+                    window.customAlert(`마이크를 실행할 수 없습니다.<br><br><span class="text-xs text-slate-400">(${e.message || e})</span>`);
+                }
+            }
         };
 
         function updateNoiseUI(level) {
